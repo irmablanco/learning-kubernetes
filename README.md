@@ -805,3 +805,304 @@ Step	Task
 
     Set token audience and expiration when using TokenRequest API.
 
+# 🏷️ Labels, Selectors, and Annotations in Kubernetes
+
+Kubernetes uses **labels**, **selectors**, and **annotations** to organize, filter, and manage resources.
+
+---
+
+## 🏷️ Labels
+
+Labels are key-value pairs used to categorize and group Kubernetes objects. They are commonly used in selectors for Services, Deployments, and `kubectl` queries.
+
+### 📌 Common Labeling Strategy
+
+| Label     | Purpose                                 | Example         |
+|-----------|------------------------------------------|-----------------|
+| `app`     | Identifies the application/component     | `app: nginx`    |
+| `function`| Describes the role or functional purpose | `function: web` |
+
+### 🔧 Example Pod with Labels
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+  labels:
+    app: nginx
+    function: web
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+```      
+
+🎯 Label Selectors
+
+Selectors allow you to filter and match resources based on their labels.
+They are commonly used in:
+
+    Services (to select Pods)
+
+    ReplicaSets, Deployments
+
+    kubectl commands
+
+🔍 Types of Selectors
+1. Equality-based Selectors
+
+Selects resources that match an exact value.
+
+```yaml
+selector:
+  matchLabels:
+    app: nginx
+    function: web
+```
+
+
+This selects resources with the label: app=web.
+2. Set-based Selectors
+
+Allows complex selection using in, notin, and exists.
+
+```yaml
+selector:
+  matchExpressions:
+    - key: env
+      operator: In
+      values: [production, staging]
+```      
+
+💡 Example: Service Selecting Pods
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 8080
+```
+This service will send traffic to Pods with the label app=web.
+📝 Annotations
+
+Annotations are also key-value pairs, but unlike labels:
+
+    They are not used for selection or filtering.
+
+    They store arbitrary metadata (often used by tools or controllers).
+
+    Used for non-identifying info like:
+
+        Build version
+
+        Documentation links
+
+        Monitoring config
+
+        External tooling (e.g., kubectl.kubernetes.io/last-applied-configuration)
+
+🔧 Example
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: annotated-pod
+  annotations:
+    description: "This pod runs the web frontend"
+    contact: "team@example.com"
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+```      
+
+🧠 Labels vs Annotations
+Feature	Labels	Annotations
+Used for	Selection, grouping	Metadata, tooling info
+Filterable	✅ Yes	❌ No
+Max size	Small (limited in number/size)	Larger, for long text or blobs
+CLI use	Used in kubectl get, kubectl delete, etc.	Mostly informational
+✅ Best Practices
+
+    Use labels to organize and query objects (e.g., by app, tier, environment).
+
+    Use annotations to store metadata or integration data (e.g., Prometheus scrape configs, last applied state).
+
+    Prefer matchLabels for simple selectors and matchExpressions for complex logic.
+
+📌 Bonus: Querying with kubectl
+
+# Get all pods with label app=web
+`kubectl get pods -l app=web`
+
+# Get all resources with label env=prod
+`kubectl get all -l env=prod`
+
+# Show labels on all pods
+`kubectl get pods --show-labels`
+
+
+
+💻 Useful kubectl Commands
+🎯 Query by Single Label
+
+`kubectl get pods --selector app=app1`
+
+Returns all Pods with app=app1.
+🔍 Query by Multiple Labels
+
+`kubectl get pods -l app=app1,function=web`
+
+Returns Pods with both app=app1 and function=web.
+🗂 Show Labels for All Pods
+
+`kubectl get pods --show-labels`
+
+Displays all Pods along with their assigned labels.
+📌 Other Resources
+
+You can use selectors with other objects too:
+
+`kubectl get svc -l app=app1`
+`kubectl get deployments -l function=api`
+`kubectl delete pods -l app=app1`
+
+
+## 🧾 What Is a ReplicaSet?
+
+A **ReplicaSet** is a Kubernetes object that ensures a specified number of **identical Pods** are always running.
+
+- If a Pod fails, the ReplicaSet **automatically creates a new one**.
+- If too many Pods are running, it will **remove extras**.
+- It uses **labels and selectors** to identify the Pods it manages.
+
+---
+
+## 📌 Key Concepts Recap
+
+- ✅ The **ReplicaSet** creates Pods using a **Pod template**
+- ✅ It uses a **`selector`** to match Pods with specific **labels**
+- ✅ A **Service** can use the same labels to **route traffic** to those Pods
+- ⚠️ Labels in the ReplicaSet’s Pod **template** must **match the selector**
+
+---
+
+## 🧱 Complete YAML Example: ReplicaSet + Service
+
+```yaml
+# ReplicaSet
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: my-replicaset
+  labels:
+    component: backend-controller   # Labels for the ReplicaSet itself
+spec:
+  replicas: 3
+  selector:                         # 🔗 Selector to find/manage Pods
+    matchLabels:
+      app: myapp
+      function: api
+  template:                         # 🧬 Pod template
+    metadata:
+      labels:                       # ✅ Must match the selector
+        app: myapp
+        function: api
+    spec:
+      containers:
+        - name: my-container
+          image: nginx
+          ports:
+            - containerPort: 80
+
+
+ ```yaml
+ # Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+spec:
+  selector:                         # 🔗 Matches the same Pod labels
+    app: myapp
+    function: api
+  ports:
+    - port: 80                      # Port exposed by the Service
+      targetPort: 80               # Port on the container
+  type: ClusterIP
+```
+
+🔍 How It All Connects
+
+[Service] ---> Selects Pods with app=myapp, function=api
+   |
+   ▼
+[Pods] ---> Created and managed by ReplicaSet
+   ▲
+   |
+[ReplicaSet] ---> Selects Pods with app=myapp, function=api
+
+    The ReplicaSet keeps 3 Pods running with the right labels.
+
+    The Service discovers those Pods and routes traffic to them.
+
+✅ Best Practices
+
+    Always make sure selector.matchLabels == template.metadata.labels
+
+    Label both app and function (or similar) to organize and group logically
+
+    Use the same labels for your Service selector
+
+    Never assume top-level metadata.labels (on the ReplicaSet) apply to Pods — define them inside the template
+
+💻 Useful Commands
+
+# Create the resources
+`kubectl apply -f replicaset.yaml`
+`kubectl apply -f service.yaml`
+
+# View Pods with matching labels
+`kubectl get pods -l app=myapp,function=api`
+
+# Describe ReplicaSet to inspect selector and status
+`kubectl describe rs my-replicaset`
+
+# Test connectivity (from another Pod in the cluster)
+`kubectl run test --rm -it --image=busybox -- sh`
+`wget -qO- http://myapp-service`
+
+
+## 📝 Annotations in Kubernetes
+
+**Annotations** in Kubernetes are key-value pairs used to attach **non-identifying metadata** to objects such as Pods, Services, Deployments, etc.
+
+> 🧠 Unlike labels, annotations are **not used for filtering or selecting** objects. They are purely for storing additional information.
+
+
+## 🧾 Example: Pod with Annotations
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: annotated-pod
+  annotations:
+    description: "This pod runs the frontend for App1"
+    contact: "frontend-team@example.com"
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+```      
+
