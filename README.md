@@ -1662,6 +1662,7 @@ Kubernetes provides built-in networking to allow Pods and Services to communicat
 
 ```text
 [Client Pod] ──> [Service ClusterIP] ──> [Matching Pod (via selector)]
+```
 
 
 📛 DNS Naming Convention
@@ -1699,3 +1700,234 @@ Inside the shell:
     Name your Services clearly (backend, redis, api, etc.)
 
     🔎 Kubernetes networking abstracts complexity, enabling developers to build distributed apps with scalable and discoverable communication patterns.
+
+
+# 🌐 Kubernetes Ingress – Summary
+
+Ingress is a **Kubernetes-native way** to manage **external access** to services inside your cluster via **HTTP(S) routing**.
+
+It acts as a **Layer 7 (application layer) load balancer**, allowing you to:
+
+- Route traffic by **hostname or path**
+- Handle **TLS/SSL termination**
+- Consolidate traffic rules into a single entrypoint
+
+---
+
+## 🚧 Without Ingress: What’s the Problem?
+
+| Approach         | Problem                                                         |
+|------------------|------------------------------------------------------------------|
+| NodePort         | Requires high, fixed ports (`30000+`), not user-friendly        |
+| LoadBalancer     | One per service = $$$ (expensive in cloud setups)               |
+| External Proxies | Require manual config outside Kubernetes                        |
+
+---
+
+## ✅ What Ingress Solves
+
+- Single external IP to expose **multiple services**
+- Easy routing based on:
+  - Hostnames (`shop.example.com`)
+  - URL paths (`/wear`, `/watch`)
+- SSL termination in one place
+- Fewer LoadBalancers (1 instead of many!)
+
+---
+
+## 🧱 Ingress Architecture Overview
+
+```text
+                   ┌──────────────────────────────┐
+                   │    External Client / User    │
+                   └────────────┬─────────────────┘
+                                ↓
+                    ┌──────────────────────────┐
+                    │  Ingress Controller (e.g. nginx) │
+                    └──────┬───────────────────┘
+         ┌─────────────────┴────────────────────┐
+         ↓                                      ↓
+  /wear → svc: wear-service            /watch → svc: watch-service
+```
+
+
+🚦 Components of Ingress
+Component	Description
+Ingress Controller	A pod running nginx, Traefik, etc. (must be installed)
+Ingress Resource	YAML object with routing rules
+Service	ClusterIP service backing your app
+🔧 Example: Basic Ingress YAML
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-online-store-ingress
+spec:
+  rules:
+    - host: my-online-store.com
+      http:
+        paths:
+          - path: /wear
+            pathType: Prefix
+            backend:
+              service:
+                name: wear-service
+                port:
+                  number: 80
+          - path: /watch
+            pathType: Prefix
+            backend:
+              service:
+                name: watch-service
+                port:
+                  number: 80
+```
+🛠 Setting Up Ingress
+
+    Install Ingress Controller
+
+    Kubernetes does not come with one by default!
+
+Example: nginx Ingress Controller
+
+`kubectl apply -f https://k8s.io/examples/ingress/nginx/nginx-ingress.yaml`
+
+    Expose the Ingress Controller
+
+Create a Service of type NodePort or LoadBalancer for it:
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-ingress
+spec:
+  type: NodePort
+  selector:
+    app: nginx-ingress
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
+    - port: 443
+      targetPort: 443
+      nodePort: 30443
+```
+    Create Ingress Resource
+
+Apply the Ingress rule YAML (kubectl apply -f ingress.yaml).
+
+    Access Your Apps
+
+Update DNS or use /etc/hosts to map:
+
+my-online-store.com → <NodeIP or LoadBalancerIP>
+
+Then access:
+
+http://my-online-store.com/wear
+http://my-online-store.com/watch
+
+🔐 Enabling TLS/SSL
+
+Ingress supports TLS termination via:
+
+```yaml
+spec:
+  tls:
+    - hosts:
+        - my-online-store.com
+      secretName: tls-secret
+```
+Create a TLS secret with:
+
+`kubectl create secret tls tls-secret \
+  --cert=cert.crt \
+  --key=cert.key`
+
+🧩 Advanced Ingress Features
+
+    Wildcard subdomains (e.g. *.example.com)
+
+    Path rewrites
+
+    Rate limiting
+
+    Auth plugins (e.g. basic auth)
+
+🔄 Host vs Path Routing
+Type	Rules Example	Use When...
+Path	/wear, /watch	One domain, multiple apps
+Host	wear.example.com, shop.	Multiple subdomains or root paths
+🧠 Best Practices
+
+    Use pathType: Prefix unless you need exact matches
+
+    Keep Ingress rules versioned with your app
+
+    Don’t forget to deploy the Ingress Controller
+
+    Use external-dns and cert-manager for automated DNS & SSL (optional)
+
+🔚 Summary
+
+✅ Ingress allows:
+
+    Clean HTTP(S) routing
+
+    Fewer public IPs
+
+    Easier SSL management
+
+    Centralized traffic control
+
+    It's a must-have for scalable, production-ready Kubernetes environments.
+
+    # 🌐 Web Traffic Flow with Proxy Server and NodePort in Kubernetes
+
+This diagram illustrates how traffic from users on the internet reaches an application deployed in a Kubernetes cluster using a **Proxy Server** and a **NodePort** service.
+
+---
+
+## 📊 Diagram Flow
+
+![Web Traffic Flow](/img/traffic-flow.png)
+
+---
+
+## 🔁 Step-by-Step Explanation
+
+1. **User Access via Domain**
+   - A user accesses the application through the domain `www.my-online-store.com`.
+
+2. **DNS Resolution**
+   - DNS resolves this domain to the public IP of a **Proxy Server**.
+
+3. **Proxy Server**
+   - The proxy listens on port **80** (standard HTTP port).
+   - It redirects or forwards traffic to port **38080** on the Node (this is the NodePort exposed by the Kubernetes service).
+
+4. **Kubernetes NodePort**
+   - A Kubernetes **Service** of type `NodePort` is created.
+   - This service listens on port **38080** and forwards traffic to the appropriate **Pod(s)**.
+
+5. **Backend Pods**
+   - The NodePort service routes the request to one of the running **Pods** in the **wear-service** Deployment.
+   - These Pods handle the application logic and respond to the client.
+
+---
+
+## 🧠 Key Concepts Reinforced
+
+- **NodePort Service**: Exposes a service on a static port (30000–32767) on each node.
+- **Proxy Server**: Acts as an intermediate that helps forward HTTP traffic to non-standard ports.
+- **Load Balancing**: The NodePort service forwards traffic to one of multiple running Pods, distributing the load.
+- **DNS and HTTP**: The user interacts with a human-friendly domain, abstracting away IPs and ports.
+
+---
+
+## ✅ Real-World Use
+
+This setup is common when hosting Kubernetes apps **on-premises** or without cloud-native LoadBalancers. It’s a flexible solution for controlling traffic and keeping Kubernetes networking manageable.
+
