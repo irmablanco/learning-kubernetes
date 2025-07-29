@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deployment
+  labels:
+    app: myapp
+    type: front-end
+
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      type: front-end
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        app: myapp
+        type: front-end
+    spec:
+      containers:
+        - name: nginx-container
+          image: nginx
+
+
+# kubectl create -f deployment-definition.yml
+# kubectl get deployments
+# kubectl get replicaset
+# kubectl get pods
+# kubectl get all
+
+
+# scale replicas kubectl replace -f replicaset-definition
+# kubectl scale --replicas=6 -f replicaset-definition.yml
+# kubectl scale --replicas=6 resplicaset myapp-replicaset
