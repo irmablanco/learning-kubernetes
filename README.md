@@ -1350,10 +1350,64 @@ Load-balanced to any matching Pod
     ↓
 (10.244.1.2, 10.244.2.3, 10.244.3.4)
 
-
+```
 
 ![NodePort Multi-Node](img/nodeport-multinode.png)
 
+
+📄 Service: nodeport-service.yaml
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-nodeport-service
+spec:
+  type: NodePort
+  selector:
+    app: python-app
+  ports:
+    - port: 80
+      targetPort: 5000
+      nodePort: 30008
+````
+
+📄 Deployment: python-deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-app-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: python-app
+  template:
+    metadata:
+      labels:
+        app: python-app
+    spec:
+      containers:
+        - name: python
+          image: python:3.11
+          ports:
+            - containerPort: 5000
+```
+🌐 External Access Still Works
+
+curl http://192.168.1.2:30008
+
+Even if the chosen Pod is on Node 3, Kubernetes ensures that traffic reaches it.
+
+    ✅ NodePort exposes the app on every node, and kube-proxy handles routing across the cluster.
+
+🔍 Tip: Test Which Pod Served You
+
+Add this line to your Python app or container startup:
+
+print(f"Serving from pod: {os.environ['HOSTNAME']}")
 
 
 
@@ -1420,3 +1474,228 @@ LoadBalancer	External IP provided by cloud provider (production-ready)
 # Test DNS and IP-based access
 `kubectl exec -it <pod> -- wget -qO- http://<service-name>`
 
+
+# 🧱 Multi-Tier Kubernetes App with ClusterIP Services
+
+This architecture includes:
+- A **Front-end** tier (Python Pods)
+- A **Back-end** tier (API Pods)
+- A **Redis** tier (data/cache Pods)
+- **ClusterIP Services** for `back-end` and `redis` internal communication
+
+---
+
+## 🧠 What is a ClusterIP Service?
+
+A `ClusterIP` is the **default Kubernetes Service type**.
+
+| Feature         | Description                                                  |
+|----------------|--------------------------------------------------------------|
+| Visibility      | Only accessible **inside the cluster**                      |
+| Use Case        | Communication between Pods/services                          |
+| DNS             | Pods can access it using its **DNS name** (e.g. `redis`)     |
+| IP Address      | Gets an internal IP (`10.x.x.x`) managed by Kubernetes       |
+
+---
+
+## 🔁 Communication Flow
+
+```text
+[Front-end Pod] → http://back-end:5000 → [ClusterIP Service: back-end]
+                           ↓
+                    http://redis:6379 → [ClusterIP Service: redis]
+```
+
+📄 YAML Definitions
+1️⃣ Redis Service (redis-service.yaml)
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  selector:
+    tier: redis
+  ports:
+    - port: 6379
+      targetPort: 6379
+```
+2️⃣ Back-end Service (backend-service.yaml)
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: back-end
+spec:
+  selector:
+    tier: backend
+  ports:
+    - port: 5000
+      targetPort: 5000
+```
+3️⃣ Front-end Deployment (frontend-deployment.yaml)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      tier: frontend
+  template:
+    metadata:
+      labels:
+        tier: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: python:3.11
+          ports:
+            - containerPort: 5000
+```
+4️⃣ Back-end Deployment (backend-deployment.yaml)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      tier: backend
+  template:
+    metadata:
+      labels:
+        tier: backend
+    spec:
+      containers:
+        - name: backend
+          image: my-backend-image
+          ports:
+            - containerPort: 5000
+```
+5️⃣ Redis Deployment (redis-deployment.yaml)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      tier: redis
+  template:
+    metadata:
+      labels:
+        tier: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          ports:
+            - containerPort: 6379
+```
+🧪 Accessing Services Internally
+
+Inside any Pod:
+
+curl http://back-end:5000        # Frontend to backend
+curl http://redis:6379           # Backend to Redis
+
+Kubernetes automatically resolves these names using internal DNS.
+✅ Summary
+Layer	Accessed By	Service Name	Port
+Redis	Back-end Pods	redis	6379
+Back-end	Front-end Pods	back-end	5000
+Front-end	Exposed via NodePort or Ingress (optional)	N/A
+
+
+# 🌐 Kubernetes Service Networking – Summary
+
+Kubernetes provides built-in networking to allow Pods and Services to communicate reliably, efficiently, and securely.
+
+---
+
+## 🧱 Core Concepts
+
+| Concept        | Description |
+|----------------|-------------|
+| **Pod IP**     | Every Pod gets its own unique IP in the cluster (e.g., `10.244.x.x`) |
+| **DNS**        | Kubernetes sets up an internal DNS server for Service discovery |
+| **Service**    | An abstraction that provides a stable endpoint to access a group of Pods |
+
+---
+
+## 🔄 How Pods Communicate
+
+1. **Pod-to-Pod Communication**
+   - All Pods can reach each other directly using their IPs (if in the same cluster).
+   - No NAT is required within the cluster.
+
+2. **Pod-to-Service Communication**
+   - Services provide a stable DNS name (e.g., `http://my-service`).
+   - Kubernetes load-balances traffic to matching Pods behind the Service.
+
+---
+
+## 🔧 Types of Services
+
+| Type           | Use Case                          | Exposes App To         | Notes                            |
+|----------------|-----------------------------------|------------------------|----------------------------------|
+| `ClusterIP`    | Default, internal-only            | Other Pods in cluster  | Most common for microservices   |
+| `NodePort`     | External access via Node IP       | External clients       | Opens a port (30000–32767)      |
+| `LoadBalancer` | External access via cloud LB      | Internet / cloud users | Requires cloud provider support |
+| `ExternalName` | Maps a Service to an external DNS | External resources     | Useful for legacy systems       |
+
+---
+
+## 🌐 Traffic Flow
+
+```text
+[Client Pod] ──> [Service ClusterIP] ──> [Matching Pod (via selector)]
+
+
+📛 DNS Naming Convention
+
+Kubernetes automatically provides DNS records for Services:
+
+<service-name>.<namespace>.svc.cluster.local
+
+Example:
+
+`curl http://redis.default.svc.cluster.local:6379`
+
+🧪 Test with BusyBox
+
+`kubectl run test --rm -it --image=busybox:1.28 -- /bin/sh`
+
+Inside the shell:
+
+`wget -qO- http://my-service-name`
+
+🔐 Internal Only by Default
+
+    Services like ClusterIP are not exposed outside the cluster
+
+    You need NodePort, LoadBalancer, or Ingress to expose to external users
+
+✅ Best Practices
+
+    Use ClusterIP for inter-Pod communication
+
+    Use NodePort or LoadBalancer for exposing apps outside the cluster
+
+    Use labels and selectors carefully to match Pods to Services
+
+    Name your Services clearly (backend, redis, api, etc.)
+
+    🔎 Kubernetes networking abstracts complexity, enabling developers to build distributed apps with scalable and discoverable communication patterns.
