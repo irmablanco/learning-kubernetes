@@ -2053,5 +2053,159 @@ Then verify:
 
 
 
+## 🗑️ How to Delete a PVC
+
+You can delete a PersistentVolumeClaim (PVC) with:
+
+`kubectl delete pvc myclaim`
+
+Or if it’s in a namespace:
+
+`kubectl delete pvc myclaim -n my-namespace`
+
+This removes the claim, not necessarily the data, depending on the PersistentVolume’s reclaim policy.
+🔁 Understanding Reclaim Policies
 
 
+| **Policy** | **What it does**                                                                 |
+|------------|----------------------------------------------------------------------------------|
+| `Delete`   | Deletes the underlying storage when the PVC is deleted ⚠️ (data is lost)        |
+| `Retain`   | Keeps the PV and the data even if the PVC is deleted 🧷 (manual cleanup needed) |
+| `Recycle`  | Legacy option — not
+
+
+✅ Example with Retain
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-vol1
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  awsElasticBlockStore:
+    volumeID: <volume-id>
+    fsType: ext4
+```
+
+# 📦 Using a PVC in a Pod
+
+## 🧠 How it works
+
+Once you've created a **PersistentVolumeClaim (PVC)**, you can attach it to a **Pod** so that the container inside the pod can use the storage.
+
+To do that, you:
+1. Define a volume in the `volumes` section using the PVC name
+2. Mount that volume inside the container using `volumeMounts`
+
+---
+
+## 🧾 Pod Example using a PVC
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: myfrontend
+      image: nginx
+      volumeMounts:
+        - mountPath: "/var/www/html"
+          name: mypd
+  volumes:
+    - name: mypd
+      persistentVolumeClaim:
+        claimName: myclaim
+```
+
+✅ Works with Deployments & ReplicaSets Too
+
+To use a PVC in a Deployment or ReplicaSet, add the same volumes and volumeMounts sections under the spec.template.spec part of the deployment.
+
+Here’s where it goes in a Deployment:
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: myfrontend
+          image: nginx
+          volumeMounts:
+            - mountPath: "/var/www/html"
+              name: mypd
+      volumes:
+        - name: mypd
+          persistentVolumeClaim:
+            claimName: myclaim
+```
+
+## 📘 StatefulSet Example: Explanation and Commands
+
+This section explains how to create and scale a **StatefulSet** in Kubernetes using a YAML definition and `kubectl` commands.
+
+---
+
+### 📄 YAML File: `statefulset-definition.yaml`
+
+This file defines a **StatefulSet** resource that manages stateful pods — such as database nodes — with persistent identities and storage.
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+spec:
+  serviceName: mysql-h  # Headless service (must be defined separately)
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql
+```
+
+
+`kubectl get pods`
+
+✅ Expected Output
+### ✅ Expected Output
+
+| Pod Name  | Status  | Ready | Restarts | Notes                                |
+|-----------|---------|-------|----------|--------------------------------------|
+| mysql-0   | Running | 1/1   | 0        | First pod (starts first)             |
+| mysql-1   | Running | 1/1   | 0        | Second pod (starts after mysql-0)    |
+| mysql-2   | Running | 1/1   | 0        | Third pod (starts after mysql-1)     |
+
+⬆️ 2. Scale Up the StatefulSet
+
+`kubectl scale statefulset mysql --replicas=5`
+
+✅ Adds mysql-3 and mysql-4
+⬇️ 3. Scale Down (Descale) the StatefulSet
+
+`kubectl scale statefulset mysql --replicas=2`
+
+✅ Kubernetes will terminate the highest-numbered pods first (e.g. mysql-4, then mysql-3)
+
+    ℹ️ Volumes created for higher pods (e.g. mysql-3) are not automatically deleted, in case you scale back up.
+
+❌ 4. Delete the StatefulSet
+
+`kubectl delete statefulset mysql`
+
+✅ This will delete the StatefulSet, but not the pods' PVCs or volumes.

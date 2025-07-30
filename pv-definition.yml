@@ -5,6 +5,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
   capacity:
     storage: 1Gi
 #  hostPath:
