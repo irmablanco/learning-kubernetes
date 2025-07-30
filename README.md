@@ -1983,4 +1983,75 @@ Then verify:
 
 `kubectl get persistentvolume`
 
+# 📄 PersistentVolumeClaim (PVC)
+
+## 🧠 What is a PVC?
+
+A **PersistentVolumeClaim (PVC)** is how a pod in Kubernetes requests storage. It’s like saying:
+
+> "I need a volume with at least this much space, and I want to use it with this access mode."
+
+When a PVC is created, Kubernetes looks for a **PersistentVolume (PV)** that matches the request (from size and access mode), and then **binds them together**.
+
+---
+
+## 🔁 How it connects to the PersistentVolume
+
+In the previous step, we created this PersistentVolume:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-vol1
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  awsElasticBlockStore:
+    volumeID: <volume-id>
+    fsType: ext4
+```
+
+Now, this PVC will match that volume if:
+
+    The access mode matches: ReadWriteOnce
+
+    The requested size (500Mi) is less than or equal to the volume's capacity (1Gi)
+
+🧾 PVC Example
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myclaim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+```
+
+🔧 How to Create the PVC
+
+`kubectl create -f pvc-definition.yaml`
+
+Then verify:
+
+`kubectl get persistentvolumeclaim`
+
+🔄 Summary Flow
+
+[PersistentVolume] pv-vol1 (1Gi, RWO)
+       ↑
+   Bound to
+       ↓
+[PersistentVolumeClaim] myclaim (500Mi, RWO)
+
+
+
+
 
